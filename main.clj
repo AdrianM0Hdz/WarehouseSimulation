@@ -3,7 +3,7 @@
         value
         (throw (AssertionError. (str value " is of invalid type")))))
 
-; ================ Product register ==============
+; ================ Product record ==============
 
 (defrecord Product 
     [id
@@ -20,7 +20,10 @@
               "NULL PRODUCT"
               0))
 
-; ================ Container register ==============
+(defn print-product [product]
+ nil)
+
+; ================ Container record ==============
 
 (defrecord Container
     [row
@@ -55,8 +58,14 @@
 (defn get-Container-total-value [container]
     (* (get-in container [:product :price]) (get container :quantity)))
 
-; ================ Warehouse register ==============
+; row does not have a record since it is just an array of containers
 
+(defn build-empty-row [n-row n-cols] 
+    (map (fn [col] (build-empty-container n-row col)) (vec (range 1 (+ n-cols 1)))))
+
+; ================ Warehouse record ==============
+
+; first row in rows is always current row
 (defrecord Warehouse
     [n-rows 
      n-cols
@@ -66,7 +75,64 @@
      rows 
      low-quantity-treshold])
 
-; warehouse register
+(defn _build-rows [cur-row n-rows n-cols]
+    (if (= cur-row 1)
+        (build-empty-row cur-row n-cols))
+    (conj (_build-rows (- cur-row 1) n-rows n-cols) (build-empty-row cur-row n-cols)))
+
+(defn build-rows [n-rows n-cols]
+    (_build-rows n-rows n-rows n-cols))
+
+(defn build-empty-Warehouse 
+    [n-rows n-cols low-quantity-treshold]
+    (Warehouse. n-rows 
+                n-cols 
+                0 
+                0 
+                []
+                (build-rows n-rows n-cols)
+                low-quantity-treshold))
+
+(defn get-next-row [row n-rows]
+    (if (= row n-rows)
+        1
+        (+ row 1)))
+
+(defn get-previous-row [row n-rows]
+    (if (= row 1)
+        n-rows
+        (- row 1)))
+
+(defn rotate-up-rows [rows]
+    (conj (rest rows) (first rows)))
+
+(defn rotate-down-rows [rows]
+    (conj (pop rows) (last rows)))
+
+(defn move-up-Warehouse [warehouse] 
+    (do 
+        (assoc warehouse :cur-row (get-next-row (:cur-row warehouse)))
+        (assoc warehouse :rows (rotate-up-rows (:rows warehouse)))))
+
+(defn move-down-Warehouse [warehouse]
+    (do 
+        (assoc warehouse :cur-row (get-previous-row (:cur-row warehouse)))
+        (assoc warehouse :rows (rotate-down-rows (:rows warehouse)))))
+
+(defn move-right-Warehouse [warehouse]
+    (if (= (:cur-col warehouse) 1)
+        (throw (Exception. "invalid movement"))
+        (assoc warehouse :cur-col (- (:cur-col warehouse) 1))))
+
+(defn move-left-Warehouse [warehouse]
+    (if (= (:cur-col warehouse) (:n-cols warehouse))
+        (thow (Exception. "invalid movement"))
+        (assoc warehouse :cur-col (+ (:cur-col warehouse) 1))))
+
+(defn fetch-current-container [warehouse]
+    (nth (first (:rows warehouse)) (- (:cur-col warehouse) 1)))
+
+
 
 (defn main 
     []
