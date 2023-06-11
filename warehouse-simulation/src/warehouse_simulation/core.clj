@@ -3,5 +3,11 @@
             [warehouse-simulation.domain.container :refer :all]
             [warehouse-simulation.domain.warehouse :refer :all]))
 
+(def FILE-PATH 
+  "C:\Users\adrhe\MetodosComputacionales\WarehouseSimulation\warehouse-simulation\assets\in.txt")
+
+(defn write-ouput [output-path]
+  (spit output-path "hi there"))
+
 (defn -main []
-  (println "hello here and there"))
+  )

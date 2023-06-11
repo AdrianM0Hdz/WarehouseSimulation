@@ -20,8 +20,8 @@
               "NULL PRODUCT"
               0))
 
-(defn print-product [product]
- nil)
+(defn str-Product (product)
+    nil)
 
 ; ================ Container record ==============
 

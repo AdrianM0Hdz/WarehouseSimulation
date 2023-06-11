@@ -16,7 +16,8 @@
      cur-col 
      catalogue ; map of product name to coords
      rows 
-     low-quantity-treshold])
+     low-quantity-treshold
+     movement-history])
 
 (defn build-empty-row [n-row n-cols] 
     (vec (map (fn [col] (build-empty-Container n-row col)) (vec (range 1 (+ n-cols 1))))))
@@ -88,7 +89,8 @@
                 1 
                 {"empty-product" (build-Coords 0 n-cols)}
                 (build-rows n-rows n-cols)
-                low-quantity-treshold))
+                low-quantity-treshold
+                []))
 
 (defn move-up-Warehouse [warehouse]  
     (assoc warehouse :cur-row (get-next-row (:cur-row warehouse) (:n-rows warehouse))
@@ -108,9 +110,28 @@
         (throw (Exception. "invalid movement"))
         (assoc warehouse :cur-col (+ (:cur-col warehouse) 1))))
 
-(defn fetch-current-container [warehouse]
+; TESTED
+(defn get-current-container [warehouse]
     (nth (first (:rows warehouse)) (- (:cur-col warehouse) 1)))
 
+; TESTED
+(defn replace-current-container [warehouse container]
+    (assoc-in warehouse 
+           [:rows 0 (- (:cur-col warehouse) 1)]
+           container))
+
+; TESTED
+(defn get-index-of-row [warehouse row]
+    (if (< row (get-in warehouse [:rows 0 0 :row]))
+        (- (+ (:n-rows warehouse) row) (get-in warehouse [:rows 0 0 :row]))
+        (- row (get-in warehouse [:rows 0 0 :row]))))
+
+; to access without triggering movements 
+; and calculate total value of stock also stokc 
+; TESTED
+(defn get-container-at-coords [warehouse coords]
+    (get-in warehouse 
+            [:rows (get-index-of-row warehouse (:row coords)) (- (:col coords) 1)]))
 
 ; movements to reach row mooving up
 ; TESTED
@@ -166,16 +187,11 @@
         (move-to-col-position-Warehouse warehouse col)
         row))
 
-(defn replace-container-at-coords [warehouse contianer coords]
-    nil)
-
-(defn get-container-at-coords [warehouse contianer coords]
-    nil)
-
 ; ADDS PRODUCT TO CATALOGUE and maps it to the next unoccupied coordinate
 ; directly accessing the rows as an array with nth function
 ; NOTE: ONLY VALID AT THE BEGGINING OF THE SCRIPT since row mutates at execution
-(defn add-product-to-Warehouse [warehouse product]
+; NOTE: refactor with assoc-in
+(defn add-product-to-Warehouse-catalogue [warehouse product]
     (let [product-coords (get-next-coord (last (last (:catalogue warehouse))) 
                                          (:n-rows warehouse) 
                                          (:n-cols warehouse))]
@@ -192,6 +208,69 @@
                                        :product 
                                        product))))))
 
-(defn withdraw-at-coords-Warehouse [warehouse coords])
+; move to coords and withdraw current product
+(defn withdraw-product-at-coords-Warehouse [warehouse coords quantity]
+    (let [moved-warehouse (move-to-position-Warehouse warehouse 
+                                                      (:row coords)
+                                                      (:col coords))]               
+            (replace-current-container moved-warehouse
+                                       (assoc (get-current-container moved-warehouse)
+                                              :quantity
+                                              (max (- (:quantity (get-current-container moved-warehouse))
+                                                      quantity) 
+                                                   0)))))
 
-(defn withdraw-product-to-Warehouse [warehouse product-name])
+(defn add-product-at-coords-Warehouse [warehouse coords quantity]
+    (let [moved-warehouse (move-to-position-Warehouse warehouse
+                                                      (:row coords)
+                                                      (:col coords))]
+            (replace-current-container moved-warehouse 
+                                       (assoc (get-current-container moved-warehouse)
+                                              :quantity
+                                              (+ (:quantity (get-current-container moved-warehouse)) 
+                                                 quantity)))))
+
+
+(defn perform-mutation-to-product-Warehouse-factory [strategy]
+    (fn [warehouse product-name quantity] 
+        (strategy warehouse 
+                  (if (= product-name nil)
+                      (Coords. (:cur-row warehouse)
+                               (:cur-col warehouse))
+                      (if (= 
+                            (get (:catalogue warehouse) product-name)
+                            nil)
+                          (throw (AssertionError. "product with that name does not exist"))
+                          (get (:catalogue warehouse) product-name)))
+                  quantity)))
+
+(def withdraw-product-to-Warehouse (perform-mutation-to-product-Warehouse-factory 
+                                    withdraw-product-at-coords-Warehouse))
+
+(def add-product-to-Warehouse (perform-mutation-to-product-Warehouse-factory 
+                               add-product-at-coords-Warehouse))
+
+; DIAGNOSTICS
+
+(defn get-total-value-of-product [warehouse product-coords] 
+    (get-Container-total-value (get-container-at-coords warehouse product-coords)))
+
+(defn get-total-value-of-Warehouse [warehouse] 
+    (reduce + (map (fn [catalogue-item] 
+                        (if (= (first catalogue-item) "empty-product")
+                            0
+                            (get-total-value-of-product warehouse (last catalogue-item)))) 
+                    (:catalogue warehouse))))
+
+(defn stock-is-scarce [warehouse stock]
+    (< stock (:low-quantity-treshold warehouse)))
+
+(defn get-scarce-products-of-Warehouse [warehouse] 
+    (filter (fn [container] 
+                (and (not= container nil)
+                     (stock-is-scarce warehouse (:quantity container)))) 
+            (map (fn [catalogue-item] 
+                    (if (= (first catalogue-item) "empty-product")
+                        nil
+                        (get-container-at-coords warehouse (last catalogue-item))))
+                 (:catalogue warehouse))))
