@@ -94,21 +94,25 @@
 
 (defn move-up-Warehouse [warehouse]  
     (assoc warehouse :cur-row (get-next-row (:cur-row warehouse) (:n-rows warehouse))
-                     :rows (rotate-up-rows (:rows warehouse))))
+                     :rows (rotate-up-rows (:rows warehouse))
+                     :movement-history (conj (:movement-history warehouse) "UP MOVE")))
 
 (defn move-down-Warehouse [warehouse] 
     (assoc warehouse :cur-row (get-previous-row (:cur-row warehouse) (:n-rows warehouse))
-                     :rows (rotate-down-rows (:rows warehouse))))
+                     :rows (rotate-down-rows (:rows warehouse))
+                     :movement-history (conj (:movement-history warehouse) "DOWN MOVE")))
 
 (defn move-left-Warehouse [warehouse]
     (if (= (:cur-col warehouse) 1)
-        (throw (Exception. "invalid movement"))
-        (assoc warehouse :cur-col (- (:cur-col warehouse) 1))))
+        (assoc warehouse :movement-history (conj (:movement-history warehouse) "INVALID LEFT MOVE"))
+        (assoc warehouse :cur-col (- (:cur-col warehouse) 1)
+                         :movement-history (conj (:movement-history warehouse) "LEFT MOVE"))))
 
 (defn move-right-Warehouse [warehouse]
     (if (= (:cur-col warehouse) (:n-cols warehouse))
-        (throw (Exception. "invalid movement"))
-        (assoc warehouse :cur-col (+ (:cur-col warehouse) 1))))
+        (assoc warehouse :movement-history (conj (:movement-history warehouse) "INVALID RIGHT MOVE"))
+        (assoc warehouse :cur-col (+ (:cur-col warehouse) 1)
+                         :movement-history (conj (:movement-history warehouse) "RIGHT MOVE"))))
 
 ; TESTED
 (defn get-current-container [warehouse]
@@ -212,13 +216,19 @@
 (defn withdraw-product-at-coords-Warehouse [warehouse coords quantity]
     (let [moved-warehouse (move-to-position-Warehouse warehouse 
                                                       (:row coords)
-                                                      (:col coords))]               
-            (replace-current-container moved-warehouse
+                                                      (:col coords))
+          not-enough (< (:quantity (get-current-container moved-warehouse)) quantity)]               
+            (assoc (replace-current-container moved-warehouse
                                        (assoc (get-current-container moved-warehouse)
                                               :quantity
                                               (max (- (:quantity (get-current-container moved-warehouse))
                                                       quantity) 
-                                                   0)))))
+                                                   0)))
+                    :movement-history
+                    (conj (:movement-history moved-warehouse)
+                          (if not-enough
+                            "NOT ENOUGH PRODUCT TO WITHDRAW"
+                            "WITHDRAWL DONE CORRECTLY")))))
 
 (defn add-product-at-coords-Warehouse [warehouse coords quantity]
     (let [moved-warehouse (move-to-position-Warehouse warehouse
@@ -256,21 +266,46 @@
     (get-Container-total-value (get-container-at-coords warehouse product-coords)))
 
 (defn get-total-value-of-Warehouse [warehouse] 
-    (reduce + (map (fn [catalogue-item] 
-                        (if (= (first catalogue-item) "empty-product")
-                            0
-                            (get-total-value-of-product warehouse (last catalogue-item)))) 
-                    (:catalogue warehouse))))
+    (assoc warehouse :total-value (reduce + (map (fn [catalogue-item] 
+                                    (if (= (first catalogue-item) "empty-product")
+                                        0
+                                        (get-total-value-of-product warehouse (last catalogue-item)))) 
+                                    (:catalogue warehouse)))))
 
 (defn stock-is-scarce [warehouse stock]
     (< stock (:low-quantity-treshold warehouse)))
 
 (defn get-scarce-products-of-Warehouse [warehouse] 
-    (filter (fn [container] 
-                (and (not= container nil)
-                     (stock-is-scarce warehouse (:quantity container)))) 
-            (map (fn [catalogue-item] 
-                    (if (= (first catalogue-item) "empty-product")
-                        nil
-                        (get-container-at-coords warehouse (last catalogue-item))))
-                 (:catalogue warehouse))))
+    (assoc warehouse :scarce-products (filter (fn [container] 
+                                                (and (not= container nil)
+                                                     (stock-is-scarce warehouse (:quantity container)))) 
+                                              (map (fn [catalogue-item] 
+                                                    (if (= (first catalogue-item) "empty-product")
+                                                        nil
+                                                        (get-container-at-coords warehouse (last catalogue-item))))
+                 (:catalogue warehouse)))))
+
+; warehouse serialization into a string 
+(defn serialize-Warehouse [warehouse]
+    (str "MOVEMENTS PERFORMED\n"
+        (reduce (fn [prev item]
+                    (str prev item "\n"))
+                ""
+                (:movement-history warehouse))
+        "WAREHOUSE TEXT REPRESENTATION\n"
+        "N-ROWS: " (:n-rows warehouse) "\n"
+        "N-COLS: " (:n-cols warehouse) "\n"
+        "CUR-ROW: " (:cur-row warehouse) "\n"
+        "CUR-COL: " (:cur-col warehouse) "\n"
+        "CATALOGUE: " (:catalogue warehouse) "\n"
+        "ROWS: \n"
+        (str-rows (:rows warehouse))
+        "LOW QUANTITY-THRESHOLD:" (:low-quantity-treshold warehouse) "\n"
+        "TOTAL-VALUE: " (:total-value warehouse) "\n"
+        "SCARSE PRODUCTS CONTAINERS:\n" 
+        (reduce (fn [prev item]
+                    (str prev item "\n"))
+                ""
+                (map (fn [container]
+                        (str-Container container))
+                      (:scarce-products warehouse)))))
